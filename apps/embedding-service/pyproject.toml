@@ -1,0 +1,12 @@
+[project]
+name = "embedding-service"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+]
+
+[tool.uv]
+package = false

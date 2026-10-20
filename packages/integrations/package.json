@@ -1,0 +1,32 @@
+{
+  "name": "@higgsden/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@higgsden/db": "workspace:*",
+    "@higgsden/policy": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "nodemailer": "^7",
+    "stripe": "^23.0.0",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
+    "typescript": "5.9.3"
+  }
+}

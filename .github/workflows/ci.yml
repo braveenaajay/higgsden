@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Docker stack
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/ >/dev/null && curl -sf http://localhost:3000/api/health >/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          curl -sf http://localhost:3000/api/health
+      - name: Isolation
+        env:
+          DATABASE_URL: postgres://higgsden_app:higgsden_app@localhost:5433/higgsden
+          DATABASE_OPERATOR_URL: postgres://higgsden_operator:higgsden_operator@localhost:5433/higgsden
+        run: pnpm --filter @higgsden/db test:integration
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:8080
+      - if: always()
+        run: docker compose down -v

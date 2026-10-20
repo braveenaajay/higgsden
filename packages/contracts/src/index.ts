@@ -11,14 +11,6 @@ export type DecisionStatus = 'proposed' | 'accepted' | 'superseded';
 export type StoryStatus = 'proposed' | 'ready' | 'in_progress' | 'done' | 'canceled';
 export type VerificationState = 'proposed' | 'reviewed' | 'verified' | 'stale' | 'superseded';
 
-export interface DemoUser {
-  id: string;
-  email: string;
-  name: string;
-  isOperator?: boolean;
-  memberships: { agencyName: string; role: Role }[];
-}
-
 export interface MeResponse {
   user: { id: string; email: string; name: string; isOperator?: boolean };
   memberships: {

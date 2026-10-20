@@ -1,7 +1,7 @@
 import { All, BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, NotFoundException, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { hashToken } from './tokens.js';
-import { audit, DEMO_PASSWORD, resolveAgency, schema as s, type Tx } from '@higgsden/db';
+import { audit, resolveAgency, schema as s, type Tx } from '@higgsden/db';
 import { slugify } from '@higgsden/domain';
 import { asc, eq, and } from 'drizzle-orm';
 import type { FastifyReply } from 'fastify';
@@ -51,32 +51,43 @@ export class AuthController {
     return { socialProviders: enabledSocialProviders(), devSignIn: config.devSignIn };
   }
 
-  /** Demo sign-in. Issues a real Better Auth session for a seeded user. */
-  @Get('dev/users')
-  async demoUsers() {
-    if (!config.devSignIn) throw new NotFoundException();
-    const users = await this.db.db.select().from(s.users).orderBy(asc(s.users.createdAt), asc(s.users.email));
-    return Promise.all(
-      users.map(async (u) => ({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        isOperator: u.isOperator,
-        memberships: (await this.membershipsOf(u.id)).map((m) => ({ agencyName: m.agencyName, role: m.role })),
-      })),
+  @Post('register')
+  async register(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
+    const input = parse(
+      z.object({
+        name: z.string().trim().min(1).max(80),
+        email: z.email().transform((value) => value.toLowerCase()),
+        password: z.string().min(10).max(128),
+      }),
+      body,
+    );
+    return this.forwardAuth(
+      reply,
+      await this.auth.auth.api.signUpEmail({
+        body: { name: input.name, email: input.email, password: input.password },
+        asResponse: true,
+      }),
+      'Could not create the account',
     );
   }
 
-  @Post('dev/sign-in')
-  @HttpCode(204)
-  async demoSignIn(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
-    if (!config.devSignIn) throw new NotFoundException();
-    const { userId } = parse(z.object({ userId: z.uuid() }), body);
-    const [user] = await this.db.db.select({ email: s.users.email }).from(s.users).where(eq(s.users.id, userId));
-    if (!user) throw new BadRequestException('Unknown user');
-    const response = await this.auth.auth.api.signInEmail({ body: { email: user.email, password: DEMO_PASSWORD }, asResponse: true });
-    if (!response.ok) throw new BadRequestException('Demo sign-in failed');
-    reply.header('set-cookie', response.headers.getSetCookie());
+  @Post('login')
+  async login(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
+    const input = parse(
+      z.object({
+        email: z.email().transform((value) => value.toLowerCase()),
+        password: z.string().min(10).max(128),
+      }),
+      body,
+    );
+    return this.forwardAuth(
+      reply,
+      await this.auth.auth.api.signInEmail({
+        body: { email: input.email, password: input.password },
+        asResponse: true,
+      }),
+      'Email or password is incorrect',
+    );
   }
 
   @Get('me')
@@ -171,6 +182,14 @@ export class AuthController {
       .where(and(eq(s.invitations.tokenHash, tokenHash), eq(s.invitations.status, 'pending')));
     if (!row) throw new NotFoundException();
     return row;
+  }
+
+  private async forwardAuth(reply: FastifyReply, response: Response, fallback: string) {
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length) reply.header('set-cookie', cookies);
+    const payload = await response.json().catch(() => ({ message: fallback }));
+    if (!response.ok) throw new BadRequestException(payload);
+    return payload;
   }
 
   private membershipsOf(userId: string) {

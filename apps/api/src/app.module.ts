@@ -12,7 +12,7 @@ import { HostingController } from './hosting/hosting.controller.js';
 import { IntelligenceController } from './intelligence/intelligence.controller.js';
 import { BacklogController } from './project/backlog.controller.js';
 import { DiscoveryController } from './project/discovery.controller.js';
-import { DecisionController, KnowledgeController, ProjectController } from './project/project.controller.js';
+import { DecisionController, EpicController, KnowledgeController, ProjectController } from './project/project.controller.js';
 import { ProvisionController } from './provision/provision.controller.js';
 import { OperatorController, SupportController } from './support/support.controller.js';
 import { TestController } from './test/test.controller.js';
@@ -31,6 +31,7 @@ import { config } from './config.js';
     ProjectController,
     DiscoveryController,
     BacklogController,
+    EpicController,
     DecisionController,
     KnowledgeController,
     GitHubController,

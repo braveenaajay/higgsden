@@ -11,4 +11,4 @@ app.setGlobalPrefix('api');
 await app.register(fastifyCookie, { secret: config.sessionSecret });
 app.enableShutdownHooks();
 await app.listen(config.port, '0.0.0.0');
-console.log(`API listening on ${config.port}${config.devSignIn ? ' (demo sign-in enabled)' : ''}`);
+console.log(`API listening on ${config.port}`);

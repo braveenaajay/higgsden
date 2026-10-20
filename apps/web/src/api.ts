@@ -1,4 +1,4 @@
-import type { DemoUser, MeResponse, ProjectDetail, WorkspaceResponse } from '@higgsden/contracts';
+import type { MeResponse, ProjectDetail, WorkspaceResponse } from '@higgsden/contracts';
 
 export class ApiError extends Error {
   constructor(
@@ -28,8 +28,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  demoUsers: () => request<DemoUser[]>('/dev/users'),
-  demoSignIn: (userId: string) => request<void>('/dev/sign-in', { method: 'POST', body: JSON.stringify({ userId }) }),
+  signUp: (body: { name: string; email: string; password: string }) =>
+    request<{ user?: { id: string } }>('/register', { method: 'POST', body: JSON.stringify(body) }),
+  signIn: (body: { email: string; password: string }) =>
+    request<{ user?: { id: string } }>('/login', { method: 'POST', body: JSON.stringify(body) }),
+  createAgency: (body: { name: string; kind?: 'agency' | 'brand' }) =>
+    request<{ agencyId: string; clientId: string | null }>('/onboarding/agency', { method: 'POST', body: JSON.stringify(body) }),
   signOut: () => request<void>('/logout', { method: 'POST' }),
   me: () => request<MeResponse>('/me'),
   workspace: (agencyId: string) => request<WorkspaceResponse & Record<string, unknown>>(`/agencies/${agencyId}/workspace`),

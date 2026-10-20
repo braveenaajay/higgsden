@@ -1,77 +1,57 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function signIn(page: Page, email: string) {
+const password = 'correct-horse';
+const stamp = Date.now();
+const email = `owner-${stamp}@example.test`;
+
+async function signUp(page: Page, name: string, userEmail: string) {
   await page.goto('/sign-in');
-  await page.getByRole('button', { name: new RegExp(email) }).click();
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create an account' }).click();
+  await page.getByLabel('Name').fill(name);
+  await page.getByLabel('Email').fill(userEmail);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
 }
 
-test.describe('HiggsDEN dummy data exits', () => {
-  test('Task 1/2: demo sign-in and workspace isolation', async ({ page }) => {
-    await signIn(page, 'lena@northwind.test');
-    await expect(page.getByRole('heading', { name: 'Northwind Digital' })).toBeVisible();
+test.describe('HiggsDEN foundation CRUD', () => {
+  test('sign up, open an Agency, and create a Client, project, and story', async ({ page }) => {
+    await signUp(page, 'Ada Owner', email);
+    await expect(page.getByRole('heading', { name: 'Open your Agency' })).toBeVisible();
+    await page.getByLabel('Agency name').fill('North Star');
+    await page.getByRole('button', { name: 'Create Agency' }).click();
+    await expect(page.getByRole('heading', { name: 'North Star' })).toBeVisible();
+
+    await page.getByLabel('New Client').fill('Acme Outdoor');
+    await page.getByRole('button', { name: 'Create Client' }).click();
     await expect(page.getByRole('heading', { name: 'Acme Outdoor' })).toBeVisible();
-    await expect(page.getByText('Bluebird Coffee')).toHaveCount(0);
+
+    await page.getByLabel('New project').fill('Storefront rebuild');
+    await page.getByRole('button', { name: 'Create project' }).click();
+    await page.getByRole('link', { name: /Storefront rebuild/ }).click();
+    await expect(page.getByRole('heading', { name: 'Storefront rebuild' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Backlog' }).click();
+    await page.getByLabel('New epic').fill('Catalogue');
+    await page.getByRole('button', { name: 'Create epic' }).click();
+    await expect(page.getByRole('heading', { name: 'Catalogue' })).toBeVisible();
+
+    await page.getByLabel('New story').fill('Filter collections');
+    await page.getByLabel('Description').fill('Shoppers filter collections by activity.');
+    await page.getByLabel('Acceptance criterion').fill('Activity filters appear on collection pages');
+    await page.getByRole('button', { name: 'Create story' }).click();
+    await expect(page.getByText('Filter collections')).toBeVisible();
+    await expect(page.getByText(/STOREFRONT-1|PRJ-1/).first()).toBeVisible();
   });
 
-  test('Task 2: Owner sees members, billing, and support', async ({ page }) => {
-    await signIn(page, 'priya@northwind.test');
+  test('sign in returns to the Agency workspace', async ({ page }) => {
+    await page.goto('/sign-in');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password').fill(password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'North Star' })).toBeVisible();
     await page.getByRole('link', { name: 'Members' }).click();
     await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
-    await page.getByRole('link', { name: 'Billing' }).click();
-    await expect(page.getByText(/Provider:/)).toBeVisible();
-    await page.getByRole('link', { name: 'Support' }).click();
-    await expect(page.getByRole('heading', { name: 'Platform support' })).toBeVisible();
-  });
-
-  test('Task 2: operator console lists agencies and not stories', async ({ page }) => {
-    await signIn(page, 'ops@higgsden.test');
-    await expect(page.getByRole('heading', { name: 'Operator console' })).toBeVisible();
-    await expect(page.locator('strong', { hasText: 'Northwind Digital' })).toBeVisible();
-    await expect(page.locator('strong', { hasText: 'Lumen Brands' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'ACME' })).toHaveCount(0);
-  });
-
-  test('Task 3: discovery, backlog, and ready rule', async ({ page }) => {
-    await signIn(page, 'priya@northwind.test');
-    await page.getByRole('link', { name: /Storefront rebuild/ }).click();
-    await expect(page.getByText(/Version/)).toBeVisible();
-    await page.getByRole('button', { name: 'Backlog' }).click();
-    await expect(page.getByText(/ACME-/).first()).toBeVisible();
-    const markReady = page.getByRole('button', { name: 'Mark ready' }).first();
-    if (await markReady.isVisible()) {
-      await markReady.click();
-    }
-  });
-
-  test('Tasks 4–7: hosting cell, dummy provision, delivery', async ({ page }) => {
-    await signIn(page, 'priya@northwind.test');
-    await page.getByRole('link', { name: 'Hosting' }).click();
-    await expect(page.getByText(/Dummy cell/)).toBeVisible();
-    await page.getByRole('link', { name: 'Workspace' }).click();
-    await page.getByRole('link', { name: /Storefront rebuild/ }).click();
-    await page.getByRole('button', { name: 'Provisioning' }).click();
-    await page.getByRole('button', { name: 'Provision dummy staging' }).click();
-    await expect(page.getByText(/github_repository|ecr_repository|database|ready/i).first()).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Delivery' }).click();
-    await expect(page.getByText(/Delivery type/)).toBeVisible();
-  });
-
-  test('Tasks 8–9: knowledge search, dummy skill, desk, insights', async ({ page }) => {
-    await signIn(page, 'priya@northwind.test');
-    await page.getByRole('link', { name: /Storefront rebuild/ }).click();
-    await page.getByRole('button', { name: 'AI' }).click();
-    await page.getByRole('button', { name: /Run plan skill/ }).click();
-    await expect(page.getByText(/Model mode/)).toBeVisible();
-    await page.getByRole('button', { name: 'Insights' }).click();
-    await expect(page.getByText('DORA (team level)')).toBeVisible();
-    await page.getByRole('link', { name: 'Desk' }).click();
-    await expect(page.getByRole('heading', { name: 'Merchant desk' })).toBeVisible();
-  });
-
-  test('Task 10: GitHub dummy install page is reachable', async ({ page }) => {
-    await signIn(page, 'priya@northwind.test');
-    await page.getByRole('link', { name: 'GitHub' }).click();
-    await expect(page.getByText(/Mode: fake/)).toBeVisible();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   });
 });

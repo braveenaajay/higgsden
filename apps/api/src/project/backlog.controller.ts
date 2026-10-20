@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { audit, schema as s } from '@higgsden/db';
 import { actionForStatusChange, readinessProblems, type StoryStatus } from '@higgsden/policy';
 import { and, count, eq } from 'drizzle-orm';
@@ -83,6 +83,19 @@ export class BacklogController {
           await tx.insert(s.acceptanceCriteria).values(input.acceptanceCriteria.map((statement, position) => ({ agencyId: project.agencyId, clientId: project.clientId, projectId: project.id, storyId: story.id, statement, position })));
         }
       }
+      return { ok: true };
+    });
+  }
+
+  @Delete(':storyId')
+  remove(@CurrentTenant() tenant: Tenant, @Param('projectId') projectId: string, @Param('storyId') storyId: string) {
+    return this.db.tenant(tenant, async (tx) => {
+      const project = await loadProject(tx, tenant, projectId);
+      assertCan(tenant, 'stories.prepare', project.clientId);
+      const [story] = await tx.select().from(s.stories).where(and(eq(s.stories.id, uuidParam(storyId)), eq(s.stories.projectId, project.id)));
+      if (!story) throw new NotFoundException();
+      await tx.update(s.stories).set({ status: 'canceled', updatedAt: new Date() }).where(eq(s.stories.id, story.id));
+      await audit(tx, { agencyId: project.agencyId, actorId: tenant.userId, clientId: project.clientId, projectId: project.id, entityType: 'story', entityId: story.id, action: 'story.status_change', summary: `${story.key} canceled` });
       return { ok: true };
     });
   }

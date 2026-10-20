@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { api, ApiError } from '../api';
-import { Badge, Button, Card, EmptyState, Field, Message, SkeletonScreen, StatusBadge, TextInput } from '../components/ui';
+import { Badge, Button, Card, EmptyState, Field, Message, SkeletonScreen, StatusBadge, TextArea, TextInput } from '../components/ui';
 
 const TABS = ['Discovery', 'Backlog', 'Decisions', 'Knowledge', 'Delivery', 'Provisioning', 'AI', 'Insights', 'Activity'] as const;
 type Tab = (typeof TABS)[number];
@@ -173,61 +173,153 @@ function Discovery({ d, agencyId, projectId }: { d: ProjectDetail; agencyId: str
 
 function Backlog({ d, agencyId, projectId }: { d: ProjectDetail; agencyId: string; projectId: string }) {
   const qc = useQueryClient();
+  const [epicTitle, setEpicTitle] = useState('');
+  const [storyTitle, setStoryTitle] = useState('');
+  const [storyDescription, setStoryDescription] = useState('');
+  const [storyCriterion, setStoryCriterion] = useState('');
+  const [storyEpicId, setStoryEpicId] = useState(d.epics.find((e) => e.id !== 'none')?.id ?? '');
+  const realEpics = d.epics.filter((e) => e.id !== 'none');
+  const refresh = () => qc.invalidateQueries({ queryKey: ['project', agencyId, projectId] });
+  const createEpic = useMutation({
+    mutationFn: () => api.post<{ id: string }>(`/agencies/${agencyId}/projects/${projectId}/epics`, { title: epicTitle.trim() }),
+    onSuccess: (epic) => {
+      setEpicTitle('');
+      setStoryEpicId(epic.id);
+      void refresh();
+    },
+  });
+  const createStory = useMutation({
+    mutationFn: () =>
+      api.post(`/agencies/${agencyId}/projects/${projectId}/stories`, {
+        title: storyTitle.trim(),
+        description: storyDescription.trim(),
+        epicId: storyEpicId || null,
+        acceptanceCriteria: storyCriterion.trim() ? [storyCriterion.trim()] : [],
+      }),
+    onSuccess: () => {
+      setStoryTitle('');
+      setStoryDescription('');
+      setStoryCriterion('');
+      void refresh();
+    },
+  });
   const ready = useMutation({
     mutationFn: (storyId: string) => api.patch(`/agencies/${agencyId}/projects/${projectId}/stories/${storyId}`, { status: 'ready' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project', agencyId, projectId] }),
+    onSuccess: () => refresh(),
   });
-  if (d.epics.length === 0) {
-    return <EmptyState title="No stories yet">Convert accepted requirements to start the backlog.</EmptyState>;
-  }
+  const cancel = useMutation({
+    mutationFn: (storyId: string) => api.delete(`/agencies/${agencyId}/projects/${projectId}/stories/${storyId}`),
+    onSuccess: () => refresh(),
+  });
   const requirementById = new Map(d.discovery?.requirements.map((r) => [r.id, r]) ?? []);
   const decisionById = new Map(d.decisions.map((x) => [x.id, x]));
+
   return (
     <div className="space-y-4">
-      {d.epics.map((epic) => (
-        <Card key={epic.id} className="p-4">
-          <h3 className="font-display text-lg">{epic.title}</h3>
-          {epic.outcome ? <p className="text-[15px] text-ink-soft">{epic.outcome}</p> : null}
-          <ul className="mt-3 divide-y divide-line">
-            {epic.stories.map((story) => (
-              <li key={story.id} className="py-3">
-                <div className="flex flex-col gap-2">
-                  <span>
-                    <span className="mr-2 font-mono text-[12px] text-ink-soft">{story.key}</span>
-                    <span className="font-semibold">{story.title}</span>
-                  </span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={story.status} />
-                    {story.status === 'proposed' ? (
-                      <Button onClick={() => ready.mutate(story.id)} loading={ready.isPending && ready.variables === story.id}>
-                        Mark ready
-                      </Button>
-                    ) : null}
-                  </span>
-                </div>
-                {ready.error && ready.variables === story.id ? (
-                  <p className="mt-1 text-[14px] font-medium text-clay" role="alert">
-                    {ready.error.message}
-                  </p>
-                ) : null}
-                <div className="mt-2 space-y-1 text-[13px] text-ink-soft">
-                  {story.requirementId ? <p>Requirement: {requirementById.get(story.requirementId)?.statement}</p> : null}
-                  {story.decisionId ? <p>Decision: {decisionById.get(story.decisionId)?.title}</p> : null}
-                </div>
-                {story.acceptanceCriteria.length ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-[15px]">
-                    {story.acceptanceCriteria.map((c) => (
-                      <li key={c}>{c}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-[14px] text-ember-dark">No acceptance criteria. This story cannot move to ready.</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ))}
+      <Card className="space-y-3 p-4">
+        <Field label="New epic" htmlFor="epic-title">
+          <TextInput id="epic-title" value={epicTitle} onChange={(e) => setEpicTitle(e.target.value)} />
+        </Field>
+        <Button onClick={() => createEpic.mutate()} loading={createEpic.isPending} loadingLabel="Creating epic" disabled={!epicTitle.trim()}>
+          Create epic
+        </Button>
+        {createEpic.error ? (
+          <p className="text-[15px] font-medium text-clay" role="alert">
+            {createEpic.error.message}
+          </p>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-3 p-4">
+        <Field label="New story" htmlFor="story-title">
+          <TextInput id="story-title" value={storyTitle} onChange={(e) => setStoryTitle(e.target.value)} />
+        </Field>
+        <Field label="Description" htmlFor="story-description" optional>
+          <TextArea id="story-description" rows={3} value={storyDescription} onChange={(e) => setStoryDescription(e.target.value)} />
+        </Field>
+        <Field label="Acceptance criterion" htmlFor="story-criterion" hint="At least one is required before the story can be marked ready.">
+          <TextInput id="story-criterion" value={storyCriterion} onChange={(e) => setStoryCriterion(e.target.value)} />
+        </Field>
+        {realEpics.length ? (
+          <Field label="Epic" htmlFor="story-epic" optional>
+            <select
+              id="story-epic"
+              className="min-h-12 w-full rounded-2xl border border-line bg-sheet px-4 text-[16px]"
+              value={storyEpicId}
+              onChange={(e) => setStoryEpicId(e.target.value)}
+            >
+              <option value="">No epic</option>
+              {realEpics.map((epic) => (
+                <option key={epic.id} value={epic.id}>
+                  {epic.title}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+        <Button onClick={() => createStory.mutate()} loading={createStory.isPending} loadingLabel="Creating story" disabled={!storyTitle.trim()}>
+          Create story
+        </Button>
+        {createStory.error ? (
+          <p className="text-[15px] font-medium text-clay" role="alert">
+            {createStory.error.message}
+          </p>
+        ) : null}
+      </Card>
+
+      {d.epics.length === 0 ? (
+        <EmptyState title="No stories yet">Create an epic and a story, or convert accepted discovery requirements.</EmptyState>
+      ) : (
+        d.epics.map((epic) => (
+          <Card key={epic.id} className="p-4">
+            <h3 className="font-display text-lg">{epic.title}</h3>
+            {epic.outcome ? <p className="text-[15px] text-ink-soft">{epic.outcome}</p> : null}
+            <ul className="mt-3 divide-y divide-line">
+              {epic.stories.map((story) => (
+                <li key={story.id} className="py-3">
+                  <div className="flex flex-col gap-2">
+                    <span>
+                      <span className="mr-2 font-mono text-[12px] text-ink-soft">{story.key}</span>
+                      <span className="font-semibold">{story.title}</span>
+                    </span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={story.status} />
+                      {story.status === 'proposed' ? (
+                        <Button onClick={() => ready.mutate(story.id)} loading={ready.isPending && ready.variables === story.id}>
+                          Mark ready
+                        </Button>
+                      ) : null}
+                      {story.status !== 'canceled' && story.status !== 'done' ? (
+                        <Button tone="secondary" onClick={() => cancel.mutate(story.id)} loading={cancel.isPending && cancel.variables === story.id}>
+                          Cancel story
+                        </Button>
+                      ) : null}
+                    </span>
+                  </div>
+                  {ready.error && ready.variables === story.id ? (
+                    <p className="mt-1 text-[14px] font-medium text-clay" role="alert">
+                      {ready.error.message}
+                    </p>
+                  ) : null}
+                  <div className="mt-2 space-y-1 text-[13px] text-ink-soft">
+                    {story.requirementId ? <p>Requirement: {requirementById.get(story.requirementId)?.statement}</p> : null}
+                    {story.decisionId ? <p>Decision: {decisionById.get(story.decisionId)?.title}</p> : null}
+                  </div>
+                  {story.acceptanceCriteria.length ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-[15px]">
+                      {story.acceptanceCriteria.map((c) => (
+                        <li key={c}>{c}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-[14px] text-ember-dark">No acceptance criteria. This story cannot move to ready.</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ))
+      )}
     </div>
   );
 }

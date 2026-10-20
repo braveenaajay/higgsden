@@ -252,7 +252,42 @@ export class AgencyController {
       if (!cap.allowed) throw new ForbiddenException({ code: 'client_cap', ...cap, message: `Client cap reached: ${cap.used} of ${cap.cap} Clients.` });
       const [client] = await tx.insert(s.clients).values({ agencyId: tenant.agencyId, ...input }).returning();
       await audit(tx, { agencyId: tenant.agencyId, actorId: tenant.userId, clientId: client!.id, entityType: 'client', entityId: client!.id, action: 'client.create', summary: `Created Client ${client!.name}` });
-      return { id: client!.id };
+      return { id: client!.id, name: client!.name };
+    });
+  }
+
+  @Patch('clients/:clientId')
+  updateClient(@CurrentTenant() tenant: Tenant, @Param('clientId') clientId: string, @Body() body: unknown) {
+    assertCan(tenant, 'clients.create');
+    const input = parse(ClientBody.partial(), body);
+    return this.db.tenant(tenant, async (tx) => {
+      const [client] = await tx
+        .select()
+        .from(s.clients)
+        .where(and(eq(s.clients.id, uuidParam(clientId)), isNull(s.clients.deletedAt)));
+      if (!client) throw new NotFoundException();
+      const [updated] = await tx
+        .update(s.clients)
+        .set({ name: input.name ?? client.name, summary: input.summary ?? client.summary })
+        .where(eq(s.clients.id, client.id))
+        .returning();
+      await audit(tx, { agencyId: tenant.agencyId, actorId: tenant.userId, clientId: client.id, entityType: 'client', entityId: client.id, action: 'client.update', summary: `Updated Client ${updated!.name}` });
+      return { id: updated!.id };
+    });
+  }
+
+  @Delete('clients/:clientId')
+  deleteClient(@CurrentTenant() tenant: Tenant, @Param('clientId') clientId: string) {
+    assertCan(tenant, 'clients.create');
+    return this.db.tenant(tenant, async (tx) => {
+      const [client] = await tx
+        .select()
+        .from(s.clients)
+        .where(and(eq(s.clients.id, uuidParam(clientId)), isNull(s.clients.deletedAt)));
+      if (!client) throw new NotFoundException();
+      await tx.update(s.clients).set({ deletedAt: new Date() }).where(eq(s.clients.id, client.id));
+      await audit(tx, { agencyId: tenant.agencyId, actorId: tenant.userId, clientId: client.id, entityType: 'client', entityId: client.id, action: 'client.delete', summary: `Removed Client ${client.name}` });
+      return { ok: true };
     });
   }
 

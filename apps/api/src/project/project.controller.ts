@@ -1,5 +1,5 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { schema as s, type Tx } from '@higgsden/db';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { audit, schema as s, type Tx } from '@higgsden/db';
 import { allowedActions } from '@higgsden/policy';
 import { and, asc, count, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -115,6 +115,78 @@ export class ProjectController {
     return this.db.tenant(tenant, async (tx) => {
       const project = await loadProject(tx, tenant, projectId);
       return { results: await searchProject(tx, tenant, project.id, project.clientId, query) };
+    });
+  }
+}
+
+@Controller('agencies/:agencyId/projects/:projectId/epics')
+@UseGuards(SessionGuard, TenantGuard)
+export class EpicController {
+  constructor(private readonly db: DbService) {}
+
+  @Post()
+  create(@CurrentTenant() tenant: Tenant, @Param('projectId') projectId: string, @Body() body: unknown) {
+    const input = parse(z.object({ title: z.string().trim().min(2).max(120), outcome: z.string().max(500).default('') }), body);
+    return this.db.tenant(tenant, async (tx) => {
+      const project = await loadProject(tx, tenant, projectId);
+      assertCan(tenant, 'stories.prepare', project.clientId);
+      const [epic] = await tx
+        .insert(s.epics)
+        .values({ agencyId: project.agencyId, clientId: project.clientId, projectId: project.id, title: input.title, outcome: input.outcome })
+        .returning();
+      await audit(tx, {
+        agencyId: project.agencyId,
+        actorId: tenant.userId,
+        clientId: project.clientId,
+        projectId: project.id,
+        entityType: 'epic',
+        entityId: epic!.id,
+        action: 'epic.create',
+        summary: `Created epic ${input.title}`,
+      });
+      return { id: epic!.id };
+    });
+  }
+
+  @Patch(':epicId')
+  update(@CurrentTenant() tenant: Tenant, @Param('projectId') projectId: string, @Param('epicId') epicId: string, @Body() body: unknown) {
+    const input = parse(z.object({ title: z.string().trim().min(2).max(120).optional(), outcome: z.string().max(500).optional() }), body);
+    return this.db.tenant(tenant, async (tx) => {
+      const project = await loadProject(tx, tenant, projectId);
+      assertCan(tenant, 'stories.prepare', project.clientId);
+      const [epic] = await tx
+        .update(s.epics)
+        .set({
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.outcome !== undefined ? { outcome: input.outcome } : {}),
+        })
+        .where(and(eq(s.epics.id, uuidParam(epicId)), eq(s.epics.projectId, project.id)))
+        .returning();
+      if (!epic) throw new NotFoundException();
+      return { ok: true };
+    });
+  }
+
+  @Delete(':epicId')
+  remove(@CurrentTenant() tenant: Tenant, @Param('projectId') projectId: string, @Param('epicId') epicId: string) {
+    return this.db.tenant(tenant, async (tx) => {
+      const project = await loadProject(tx, tenant, projectId);
+      assertCan(tenant, 'stories.prepare', project.clientId);
+      const [epic] = await tx.select().from(s.epics).where(and(eq(s.epics.id, uuidParam(epicId)), eq(s.epics.projectId, project.id)));
+      if (!epic) throw new NotFoundException();
+      await tx.update(s.stories).set({ epicId: null }).where(eq(s.stories.epicId, epic.id));
+      await tx.delete(s.epics).where(eq(s.epics.id, epic.id));
+      await audit(tx, {
+        agencyId: project.agencyId,
+        actorId: tenant.userId,
+        clientId: project.clientId,
+        projectId: project.id,
+        entityType: 'epic',
+        entityId: epic.id,
+        action: 'epic.delete',
+        summary: `Deleted epic ${epic.title}`,
+      });
+      return { ok: true };
     });
   }
 }

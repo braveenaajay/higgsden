@@ -199,14 +199,14 @@ HiggsDEN never posts back into Teams in v1 (alignment: skills may not send exter
 
 ## Dummy data until accounts exist
 
-Same rule as GitHub and Stripe. Seeded when the database is reset.
+Same rule as GitHub and Stripe. The database seed loads the platform catalog only (plans, tiers, cell, templates). Tenant Teams rows are created through the API, not the seed.
 
 | Fixture | Result |
 | --- | --- |
-| Northwind `Mode: fake`, organizer Meera → Storefront rebuild | Connection + maps present |
-| Simulated Acme discovery call, two unanswered questions | `ACME-7` and `ACME-8`, `proposed`, epic Meeting questions, `source=teams_question` |
+| Agency connects in `Mode: fake` and maps an organizer | Connection + maps present |
+| Simulated discovery call, two unanswered questions | Two `proposed` stories, epic Meeting questions, `source=teams_question` |
 | Same Graph transcript id posted twice | Unique index rejects the second row |
-| Lumen meeting with no project map | Transcript stored, no stories |
+| Meeting with no project map | Transcript stored, no stories |
 | Operator console | `Teams connected` on the Agency, no quotes |
 
 ## Out of scope for v1
